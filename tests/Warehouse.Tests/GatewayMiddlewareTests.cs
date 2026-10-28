@@ -135,7 +135,7 @@ public class GatewayMiddlewareTests
         var ocelotBuilder = Ocelot.DependencyInjection.ServiceCollectionExtensions
             .AddOcelot(webBuilder.Services, webBuilder.Configuration);
         Ocelot.Provider.Consul.OcelotBuilderExtensions.AddConsul<CustomConsulServiceBuilder>(ocelotBuilder);
-        Ocelot.Provider.Polly.OcelotBuilderExtensions.AddPolly(ocelotBuilder);
+        Ocelot.Provider.Polly.OcelotBuilderExtensions.AddPolly<GatewayResiliencePipelineProvider>(ocelotBuilder);
 
         await using var app = webBuilder.Build();
         var monitor = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<Ocelot.Configuration.File.FileConfiguration>>();
@@ -155,6 +155,120 @@ public class GatewayMiddlewareTests
 
         await Ocelot.Middleware.OcelotMiddlewareExtensions.UseOcelot(app);
         Assert.Equal("custom-consul-host", internalRepo.Get().Data.ServiceProviderConfiguration.Host);
+    }
+
+    [Fact]
+    public async Task RedisCacheMiddleware_DoesNotCacheDegradedShardResponses()
+    {
+        var store = new InMemoryCacheStore();
+        int downstreamCalls = 0;
+        bool degraded = true;
+
+        RequestDelegate terminal = async ctx =>
+        {
+            Interlocked.Increment(ref downstreamCalls);
+            ctx.Response.StatusCode = StatusCodes.Status200OK;
+            ctx.Response.ContentType = "application/json";
+            if (degraded)
+                ctx.Response.Headers["X-Degraded-Shards"] = "1";
+            await ctx.Response.WriteAsync(degraded ? "[{\"partial\":true}]" : "[{\"partial\":false}]");
+        };
+
+        var middleware = new RedisCacheMiddleware(terminal, store, new CacheOptions { TtlSeconds = 30 });
+
+        var firstCtx = new DefaultHttpContext();
+        firstCtx.Request.Method = "GET";
+        firstCtx.Request.Path = "/api/sales";
+        firstCtx.Response.Body = new MemoryStream();
+        await middleware.InvokeAsync(firstCtx);
+        Assert.Equal("1", firstCtx.Response.Headers["X-Degraded-Shards"].ToString());
+        Assert.Equal(1, downstreamCalls);
+
+        degraded = false;
+        var secondCtx = new DefaultHttpContext();
+        secondCtx.Request.Method = "GET";
+        secondCtx.Request.Path = "/api/sales";
+        secondCtx.Response.Body = new MemoryStream();
+        await middleware.InvokeAsync(secondCtx);
+        Assert.Equal(2, downstreamCalls);
+        Assert.Equal("MISS", secondCtx.Response.Headers["X-Cache"].ToString());
+    }
+
+    [Fact]
+    public async Task PriorityQueueMiddleware_CancelsQueuedWaiterOnRequestAbortedWithoutLeakingSlot()
+    {
+        var releaseBlocker = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        RequestDelegate terminal = async ctx =>
+        {
+            if (ctx.Items["tag"]?.ToString() == "blocker")
+                await releaseBlocker.Task;
+            ctx.Response.StatusCode = 200;
+        };
+
+        var middleware = new PriorityQueueMiddleware(terminal, new PriorityOptions { MaxConcurrent = 1 });
+
+        var blockerCtx = MakePriorityContext("blocker", "normal");
+        var blockerTask = middleware.InvokeAsync(blockerCtx);
+
+        using var cts = new CancellationTokenSource();
+        var abortedCtx = MakePriorityContext("aborted", "low");
+        abortedCtx.RequestAborted = cts.Token;
+        var abortedTask = middleware.InvokeAsync(abortedCtx);
+
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => abortedTask.WaitAsync(TimeSpan.FromMilliseconds(300)));
+
+        releaseBlocker.SetResult();
+        await blockerTask;
+
+        // Verify the single concurrency slot was NOT leaked after cancellation
+        var followUpCtx = MakePriorityContext("followup", "normal");
+        await middleware.InvokeAsync(followUpCtx).WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Equal(200, followUpCtx.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PollyCircuitBreaker_OpensAfterDownstreamFaultsAndFailsFast()
+    {
+        string gatewayDir = Path.GetFullPath("../../../../../src/Warehouse.Gateway", AppContext.BaseDirectory);
+        var webBuilder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(new Microsoft.AspNetCore.Builder.WebApplicationOptions
+        {
+            ContentRootPath = gatewayDir,
+            EnvironmentName = "Production"
+        });
+        Microsoft.Extensions.Configuration.JsonConfigurationExtensions.AddJsonFile(
+            webBuilder.Configuration, Path.Combine(gatewayDir, "ocelot.json"), optional: false, reloadOnChange: false);
+
+        var ocelotBuilder = Ocelot.DependencyInjection.ServiceCollectionExtensions
+            .AddOcelot(webBuilder.Services, webBuilder.Configuration);
+        Ocelot.Provider.Consul.OcelotBuilderExtensions.AddConsul<CustomConsulServiceBuilder>(ocelotBuilder);
+        Ocelot.Provider.Polly.OcelotBuilderExtensions.AddPolly<GatewayResiliencePipelineProvider>(ocelotBuilder);
+
+        await using var app = webBuilder.Build();
+        var monitor = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<Ocelot.Configuration.File.FileConfiguration>>();
+        var creator = app.Services.GetRequiredService<Ocelot.Configuration.Creator.IInternalConfigurationCreator>();
+        var internalCfg = await creator.Create(monitor.CurrentValue);
+        Assert.False(internalCfg.IsError);
+
+        var route = internalCfg.Data.Routes[0].DownstreamRoute[0];
+        var contextAccessor = app.Services.GetRequiredService<IHttpContextAccessor>();
+        contextAccessor.HttpContext = new DefaultHttpContext { RequestServices = app.Services };
+
+        var invokerPool = app.Services.GetRequiredService<Ocelot.Requester.IMessageInvokerPool>();
+        var invoker = invokerPool.Get(route);
+
+        // Two downstream connection faults reachExceptionsAllowedBeforeBreaking = 2
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1:1/api/sales"), CancellationToken.None));
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1:1/api/sales"), CancellationToken.None));
+
+        // Third request fails fast via Polly BrokenCircuitException before touching SocketsHttpHandler
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await Assert.ThrowsAnyAsync<Polly.CircuitBreaker.BrokenCircuitException>(() =>
+            invoker.SendAsync(new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1:1/api/sales"), CancellationToken.None));
+        sw.Stop();
+        Assert.True(sw.ElapsedMilliseconds < 50, $"Expected fail-fast <50ms when circuit is open, took {sw.ElapsedMilliseconds}ms");
     }
 
     private static DefaultHttpContext MakePriorityContext(string tag, string priorityHeader)

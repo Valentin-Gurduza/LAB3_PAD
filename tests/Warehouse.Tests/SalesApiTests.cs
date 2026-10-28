@@ -204,6 +204,35 @@ public class SalesApiTests
         Assert.True(slowSw.ElapsedMilliseconds >= 140);
     }
 
+    [Fact]
+    public async Task Post_InvalidQuantityOrNegativeUnitPrice_ReturnsBadRequest()
+    {
+        await using var app = CreateNodeApp();
+        using var client = app.CreateClient();
+
+        var zeroQty = await client.PostAsJsonAsync("/api/sales", new SaleRecord
+        {
+            Id = "sale-bad-qty",
+            Region = "EU",
+            Category = "Tech",
+            Product = "Mouse",
+            Quantity = 0,
+            UnitPrice = 50m
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, zeroQty.StatusCode);
+
+        var negPrice = await client.PostAsJsonAsync("/api/sales", new SaleRecord
+        {
+            Id = "sale-bad-price",
+            Region = "EU",
+            Category = "Tech",
+            Product = "Mouse",
+            Quantity = 2,
+            UnitPrice = -10m
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, negPrice.StatusCode);
+    }
+
     private static WebApplicationFactory<SalesController> CreateNodeApp(StubPeerShardClient? peer = null)
     {
         var repo = new InMemoryWarehouseRepository();

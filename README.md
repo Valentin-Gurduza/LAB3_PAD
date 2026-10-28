@@ -66,7 +66,9 @@ docker stop pad-api-2
 Trimite un burst concurent: cererile cu `X-Priority: high` sar în fața celor `normal` și `low` în `PriorityQueueMiddleware`.
 
 ### F. Bonus — Circuit Breaker (Polly în Ocelot)
-Trimite de 2–3 ori din Postman request-ul **12. Bonus - Test Circuit Breaker** (cu header `X-Simulate-Fail-Node: api-1`, `X-Simulate-Delay-Ms: 4000`, peste timeout-ul Ocelot de `2500ms`). Polly taie conexiunea spre `api-1` timp de `10s` și trimite cererile spre `api-2` / `api-3`.
+Trimite de 3 ori la rând din Postman request-ul **12. Bonus - Test Circuit Breaker** (`X-Simulate-Fail-Node: *`, `X-Simulate-Delay-Ms: 4000`):
+1. Primele **2 cereri** sunt tăiate de Ocelot la timeout-ul de **2.5s** (`TimeoutValue: 2500`).
+2. După 2 eșecuri (`ExceptionsAllowedBeforeBreaking: 2`), Polly **deschide circuitul** timp de `10s` (`DurationOfBreak: 10000`) — a **3-a cerere** returnează instant `503` în câteva milisecunde (*fail-fast*), fără să mai aștepte timeout-ul! (Pentru redirecționarea traficului când cade un singur nod, vezi punctul **D** mai sus.)
 
 ### G. Bonus — Replicare Bază de Date (1 Master + 2 Backup per Shard)
 Fiecare shard are 3 noduri MongoDB în Replica Set (`rs0`: `pad-mongo-s0-1` = Master inițial, `s0-2` și `s0-3` = Backup/Secondary).

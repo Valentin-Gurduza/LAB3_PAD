@@ -140,12 +140,12 @@
       }
     },
     {
-      "name": "12. Bonus - Test Circuit Breaker (Simulare Timeout pe api-1)",
+      "name": "12. Bonus - Test Circuit Breaker (Simulare Timeout Downstream)",
       "request": {
         "method": "GET",
         "header": [
           { "key": "Accept", "value": "application/json" },
-          { "key": "X-Simulate-Fail-Node", "value": "api-1" },
+          { "key": "X-Simulate-Fail-Node", "value": "*" },
           { "key": "X-Simulate-Delay-Ms", "value": "4000" }
         ],
         "url": "{{gatewayUrl}}/api/sales"

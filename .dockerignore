@@ -2,8 +2,6 @@
 **/obj/
 .git/
 .nuget/
-.superpowers/
-.worktrees/
 tests/
 docs/
 postman/

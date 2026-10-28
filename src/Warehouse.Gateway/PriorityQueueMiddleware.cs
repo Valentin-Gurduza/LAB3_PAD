@@ -43,13 +43,24 @@ public class PriorityQueueMiddleware
             }
             else
             {
-                waiter = new TaskCompletionSource<bool>();
+                waiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 _queue.Enqueue(waiter, (rank, _sequence++));
             }
         }
 
         if (waiter is not null)
-            await waiter.Task;
+        {
+            try
+            {
+                await waiter.Task.WaitAsync(context.RequestAborted);
+            }
+            catch (OperationCanceledException)
+            {
+                if (!waiter.TrySetCanceled(context.RequestAborted))
+                    ReleaseOrPassBaton();
+                throw;
+            }
+        }
 
         waitSw.Stop();
         string waitMs = waitSw.ElapsedMilliseconds.ToString();
@@ -69,16 +80,35 @@ public class PriorityQueueMiddleware
         }
         finally
         {
-            TaskCompletionSource<bool>? nextToWake = null;
+            ReleaseOrPassBaton();
+        }
+    }
+
+    private void ReleaseOrPassBaton()
+    {
+        while (true)
+        {
+            TaskCompletionSource<bool>? candidate = null;
             lock (_sync)
             {
-                if (_queue.TryDequeue(out var dequeued, out _))
-                    nextToWake = dequeued;
-                else
+                while (_queue.TryDequeue(out var dequeued, out _))
+                {
+                    if (!dequeued.Task.IsCompleted)
+                    {
+                        candidate = dequeued;
+                        break;
+                    }
+                }
+
+                if (candidate is null)
+                {
                     _active--;
+                    return;
+                }
             }
 
-            nextToWake?.TrySetResult(true);
+            if (candidate.TrySetResult(true))
+                return;
         }
     }
 

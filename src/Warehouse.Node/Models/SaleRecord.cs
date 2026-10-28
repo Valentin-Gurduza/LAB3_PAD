@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
@@ -14,8 +15,10 @@ public class SaleRecord
 
     public string Product { get; set; } = string.Empty;
 
+    [Range(1, int.MaxValue)]
     public int Quantity { get; set; }
 
+    [Range(typeof(decimal), "0", "79228162514264337593543950335")]
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal UnitPrice { get; set; }
 

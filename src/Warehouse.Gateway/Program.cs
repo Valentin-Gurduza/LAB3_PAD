@@ -35,7 +35,7 @@ builder.Services.AddSingleton<ICacheStore, RedisCacheStore>();
 builder.Services
     .AddOcelot(builder.Configuration)
     .AddConsul<CustomConsulServiceBuilder>()
-    .AddPolly();
+    .AddPolly<GatewayResiliencePipelineProvider>();
 
 var app = builder.Build();
 

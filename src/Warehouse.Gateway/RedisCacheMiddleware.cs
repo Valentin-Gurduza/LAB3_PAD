@@ -159,7 +159,8 @@ public class RedisCacheMiddleware
             buffer.Position = 0;
             var bodyBytes = buffer.ToArray();
 
-            if (context.Response.StatusCode == StatusCodes.Status200OK)
+            if (context.Response.StatusCode == StatusCodes.Status200OK
+                && !context.Response.Headers.ContainsKey("X-Degraded-Shards"))
             {
                 context.Response.Headers["X-Cache"] = "MISS";
                 var entry = new CachedGatewayResponse(
@@ -169,6 +170,10 @@ public class RedisCacheMiddleware
                     context.Response.Headers.TryGetValue("X-Owner-Shard", out var os) ? os.ToString() : null);
 
                 await _store.SetAsync(key, entry, _ttl, context.RequestAborted);
+            }
+            else if (context.Response.Headers.ContainsKey("X-Degraded-Shards"))
+            {
+                context.Response.Headers["X-Cache"] = "BYPASS";
             }
 
             buffer.Position = 0;

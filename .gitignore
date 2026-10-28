@@ -4,6 +4,4 @@ obj/
 .idea/
 *.user
 *.suo
-.superpowers/
-.worktrees/
 .nuget/
