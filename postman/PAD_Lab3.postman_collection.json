@@ -1,0 +1,155 @@
+{
+  "info": {
+    "name": "PAD Lab 3 - Data Warehouse Distribuit",
+    "description": "Colectie Postman pentru demonstrarea CRUD fara verbe in path, JSON + XML, Round-Robin, Sharding, Redis Cache, Prioritate si Circuit Breaker.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. GET Toate Inregistrarile (JSON + Cache + Round-Robin)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{gatewayUrl}}/api/sales"
+      }
+    },
+    {
+      "name": "2. GET Toate Inregistrarile (XML Format)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/xml" }
+        ],
+        "url": "{{gatewayUrl}}/api/sales"
+      }
+    },
+    {
+      "name": "3. GET Raport Agregat Data Warehouse (JSON)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{gatewayUrl}}/api/sales/reports"
+      }
+    },
+    {
+      "name": "4. GET Raport Agregat Data Warehouse (XML)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/xml" }
+        ],
+        "url": "{{gatewayUrl}}/api/sales/reports"
+      }
+    },
+    {
+      "name": "5. GET Dupa ID (Rutare pe Shard)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": "{{gatewayUrl}}/api/sales/sale-1001"
+      }
+    },
+    {
+      "name": "6. POST Creare Vanzare (JSON)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"sale-2001\",\n  \"region\": \"EU\",\n  \"category\": \"Electronics\",\n  \"product\": \"Workstation GPU\",\n  \"quantity\": 2,\n  \"unitPrice\": 2400\n}"
+        },
+        "url": "{{gatewayUrl}}/api/sales"
+      }
+    },
+    {
+      "name": "7. POST Creare Vanzare (XML)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/xml" },
+          { "key": "Accept", "value": "application/xml" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<SaleRecord>\n  <Id>sale-2002</Id>\n  <Region>US</Region>\n  <Category>Software</Category>\n  <Product>Data Warehouse License</Product>\n  <Quantity>5</Quantity>\n  <UnitPrice>600</UnitPrice>\n</SaleRecord>"
+        },
+        "url": "{{gatewayUrl}}/api/sales"
+      }
+    },
+    {
+      "name": "8. PUT Actualizare Vanzare (JSON)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"region\": \"EU\",\n  \"category\": \"Electronics\",\n  \"product\": \"Workstation GPU Updated\",\n  \"quantity\": 4,\n  \"unitPrice\": 2300\n}"
+        },
+        "url": "{{gatewayUrl}}/api/sales/sale-2001"
+      }
+    },
+    {
+      "name": "9. PUT Actualizare Vanzare (XML)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/xml" },
+          { "key": "Accept", "value": "application/xml" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<SaleRecord>\n  <Region>US</Region>\n  <Category>Software</Category>\n  <Product>Data Warehouse License Enterprise</Product>\n  <Quantity>10</Quantity>\n  <UnitPrice>550</UnitPrice>\n</SaleRecord>"
+        },
+        "url": "{{gatewayUrl}}/api/sales/sale-2002"
+      }
+    },
+    {
+      "name": "10. DELETE Stergere Vanzare",
+      "request": {
+        "method": "DELETE",
+        "url": "{{gatewayUrl}}/api/sales/sale-2001"
+      }
+    },
+    {
+      "name": "11. Bonus - Request cu Prioritate HIGH",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "X-Priority", "value": "high" }
+        ],
+        "url": "{{gatewayUrl}}/api/sales/reports"
+      }
+    },
+    {
+      "name": "12. Bonus - Test Circuit Breaker (Simulare Timeout pe api-1)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "X-Simulate-Fail-Node", "value": "api-1" },
+          { "key": "X-Simulate-Delay-Ms", "value": "4000" }
+        ],
+        "url": "{{gatewayUrl}}/api/sales"
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - 01-infra.yaml
+  - 02-mongo-shards.yaml
+  - 03-warehouse-nodes.yaml
+  - 04-gateway.yaml

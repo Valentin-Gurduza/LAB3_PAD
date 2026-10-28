@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-1
+  namespace: pad-lab3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-1
+  template:
+    metadata:
+      labels:
+        app: api-1
+    spec:
+      containers:
+        - name: node
+          image: warehouse-node:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NODE_ID
+              value: "api-1"
+            - name: SHARD_ID
+              value: "0"
+            - name: SHARD_COUNT
+              value: "3"
+            - name: SERVICE_HOST
+              value: "api-1"
+            - name: SERVICE_PORT
+              value: "8080"
+            - name: MONGO_CONNECTION
+              value: "mongodb://mongo-rs0-0.mongo-rs0:27017,mongo-rs0-1.mongo-rs0:27017,mongo-rs0-2.mongo-rs0:27017/warehouse?replicaSet=rs0&readPreference=primaryPreferred"
+            - name: CONSUL_ADDRESS
+              value: "http://consul:8500"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-1
+  namespace: pad-lab3
+spec:
+  selector:
+    app: api-1
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-2
+  namespace: pad-lab3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-2
+  template:
+    metadata:
+      labels:
+        app: api-2
+    spec:
+      containers:
+        - name: node
+          image: warehouse-node:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NODE_ID
+              value: "api-2"
+            - name: SHARD_ID
+              value: "1"
+            - name: SHARD_COUNT
+              value: "3"
+            - name: SERVICE_HOST
+              value: "api-2"
+            - name: SERVICE_PORT
+              value: "8080"
+            - name: MONGO_CONNECTION
+              value: "mongodb://mongo-rs1-0.mongo-rs1:27017,mongo-rs1-1.mongo-rs1:27017,mongo-rs1-2.mongo-rs1:27017/warehouse?replicaSet=rs1&readPreference=primaryPreferred"
+            - name: CONSUL_ADDRESS
+              value: "http://consul:8500"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-2
+  namespace: pad-lab3
+spec:
+  selector:
+    app: api-2
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-3
+  namespace: pad-lab3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-3
+  template:
+    metadata:
+      labels:
+        app: api-3
+    spec:
+      containers:
+        - name: node
+          image: warehouse-node:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NODE_ID
+              value: "api-3"
+            - name: SHARD_ID
+              value: "2"
+            - name: SHARD_COUNT
+              value: "3"
+            - name: SERVICE_HOST
+              value: "api-3"
+            - name: SERVICE_PORT
+              value: "8080"
+            - name: MONGO_CONNECTION
+              value: "mongodb://mongo-rs2-0.mongo-rs2:27017,mongo-rs2-1.mongo-rs2:27017,mongo-rs2-2.mongo-rs2:27017/warehouse?replicaSet=rs2&readPreference=primaryPreferred"
+            - name: CONSUL_ADDRESS
+              value: "http://consul:8500"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-3
+  namespace: pad-lab3
+spec:
+  selector:
+    app: api-3
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,0 +1,204 @@
+services:
+  consul:
+    image: hashicorp/consul:1.15
+    container_name: pad-consul
+    command: agent -server -bootstrap-expect=1 -ui -client=0.0.0.0
+    ports:
+      - "8500:8500"
+
+  redis:
+    image: redis:7-alpine
+    container_name: pad-redis
+    ports:
+      - "16379:6379"
+
+  # Shard 0 Replica Set (rs0: 1 Primary + 2 Secondaries)
+  mongo-s0-1:
+    image: mongo:7
+    container_name: pad-mongo-s0-1
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--quiet"]
+  mongo-s0-2:
+    image: mongo:7
+    container_name: pad-mongo-s0-2
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--quiet"]
+  mongo-s0-3:
+    image: mongo:7
+    container_name: pad-mongo-s0-3
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--quiet"]
+
+  # Shard 1 Replica Set (rs1: 1 Primary + 2 Secondaries)
+  mongo-s1-1:
+    image: mongo:7
+    container_name: pad-mongo-s1-1
+    command: ["mongod", "--replSet", "rs1", "--bind_ip_all", "--quiet"]
+  mongo-s1-2:
+    image: mongo:7
+    container_name: pad-mongo-s1-2
+    command: ["mongod", "--replSet", "rs1", "--bind_ip_all", "--quiet"]
+  mongo-s1-3:
+    image: mongo:7
+    container_name: pad-mongo-s1-3
+    command: ["mongod", "--replSet", "rs1", "--bind_ip_all", "--quiet"]
+
+  # Shard 2 Replica Set (rs2: 1 Primary + 2 Secondaries)
+  mongo-s2-1:
+    image: mongo:7
+    container_name: pad-mongo-s2-1
+    command: ["mongod", "--replSet", "rs2", "--bind_ip_all", "--quiet"]
+  mongo-s2-2:
+    image: mongo:7
+    container_name: pad-mongo-s2-2
+    command: ["mongod", "--replSet", "rs2", "--bind_ip_all", "--quiet"]
+  mongo-s2-3:
+    image: mongo:7
+    container_name: pad-mongo-s2-3
+    command: ["mongod", "--replSet", "rs2", "--bind_ip_all", "--quiet"]
+
+  mongo-rs-init:
+    image: mongo:7
+    container_name: pad-mongo-rs-init
+    depends_on:
+      - mongo-s0-1
+      - mongo-s0-2
+      - mongo-s0-3
+      - mongo-s1-1
+      - mongo-s1-2
+      - mongo-s1-3
+      - mongo-s2-1
+      - mongo-s2-2
+      - mongo-s2-3
+    volumes:
+      - ./scripts/init-mongo-rs.sh:/init-mongo-rs.sh:ro
+    entrypoint: ["bash", "/init-mongo-rs.sh"]
+
+  # Open Database Web UIs (1 per Shard Replica Set)
+  mongo-ui-shard0:
+    image: mongo-express:1.0.2-20
+    container_name: pad-mongo-ui-s0
+    restart: unless-stopped
+    depends_on:
+      mongo-rs-init:
+        condition: service_completed_successfully
+    environment:
+      ME_CONFIG_MONGODB_URL: "mongodb://mongo-s0-1:27017,mongo-s0-2:27017,mongo-s0-3:27017/?replicaSet=rs0"
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "8081:8081"
+
+  mongo-ui-shard1:
+    image: mongo-express:1.0.2-20
+    container_name: pad-mongo-ui-s1
+    restart: unless-stopped
+    depends_on:
+      mongo-rs-init:
+        condition: service_completed_successfully
+    environment:
+      ME_CONFIG_MONGODB_URL: "mongodb://mongo-s1-1:27017,mongo-s1-2:27017,mongo-s1-3:27017/?replicaSet=rs1"
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "8082:8081"
+
+  mongo-ui-shard2:
+    image: mongo-express:1.0.2-20
+    container_name: pad-mongo-ui-s2
+    restart: unless-stopped
+    depends_on:
+      mongo-rs-init:
+        condition: service_completed_successfully
+    environment:
+      ME_CONFIG_MONGODB_URL: "mongodb://mongo-s2-1:27017,mongo-s2-2:27017,mongo-s2-3:27017/?replicaSet=rs2"
+      ME_CONFIG_MONGODB_ENABLE_ADMIN: "true"
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "8083:8081"
+
+  # 3 Data Warehouse REST API Microservices (each isolated to its own Shard Replica Set)
+  api-1:
+    build:
+      context: .
+      dockerfile: src/Warehouse.Node/Dockerfile
+    container_name: pad-api-1
+    restart: unless-stopped
+    depends_on:
+      consul:
+        condition: service_started
+      mongo-rs-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ID: "api-1"
+      SHARD_ID: "0"
+      SHARD_COUNT: "3"
+      SERVICE_HOST: "api-1"
+      SERVICE_PORT: "8080"
+      MONGO_CONNECTION: "mongodb://mongo-s0-1:27017,mongo-s0-2:27017,mongo-s0-3:27017/warehouse?replicaSet=rs0&readPreference=primaryPreferred"
+      MONGO_DATABASE: "warehouse"
+      CONSUL_ADDRESS: "http://consul:8500"
+      ENABLE_CONSUL: "true"
+
+  api-2:
+    build:
+      context: .
+      dockerfile: src/Warehouse.Node/Dockerfile
+    container_name: pad-api-2
+    restart: unless-stopped
+    depends_on:
+      consul:
+        condition: service_started
+      mongo-rs-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ID: "api-2"
+      SHARD_ID: "1"
+      SHARD_COUNT: "3"
+      SERVICE_HOST: "api-2"
+      SERVICE_PORT: "8080"
+      MONGO_CONNECTION: "mongodb://mongo-s1-1:27017,mongo-s1-2:27017,mongo-s1-3:27017/warehouse?replicaSet=rs1&readPreference=primaryPreferred"
+      MONGO_DATABASE: "warehouse"
+      CONSUL_ADDRESS: "http://consul:8500"
+      ENABLE_CONSUL: "true"
+
+  api-3:
+    build:
+      context: .
+      dockerfile: src/Warehouse.Node/Dockerfile
+    container_name: pad-api-3
+    restart: unless-stopped
+    depends_on:
+      consul:
+        condition: service_started
+      mongo-rs-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ID: "api-3"
+      SHARD_ID: "2"
+      SHARD_COUNT: "3"
+      SERVICE_HOST: "api-3"
+      SERVICE_PORT: "8080"
+      MONGO_CONNECTION: "mongodb://mongo-s2-1:27017,mongo-s2-2:27017,mongo-s2-3:27017/warehouse?replicaSet=rs2&readPreference=primaryPreferred"
+      MONGO_DATABASE: "warehouse"
+      CONSUL_ADDRESS: "http://consul:8500"
+      ENABLE_CONSUL: "true"
+
+  # Ocelot API Gateway (Consul Service Discovery + Round-Robin + Polly Circuit Breaker + Redis Cache + Priority Queue)
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Warehouse.Gateway/Dockerfile
+    container_name: pad-gateway
+    restart: unless-stopped
+    depends_on:
+      - consul
+      - redis
+      - api-1
+      - api-2
+      - api-3
+    environment:
+      CONSUL_HOST: "consul"
+      CONSUL_PORT: "8500"
+      REDIS_CONNECTION: "redis:6379"
+      CACHE_TTL_SECONDS: "30"
+      GATEWAY_MAX_CONCURRENT: "2"
+    ports:
+      - "8000:8080"
